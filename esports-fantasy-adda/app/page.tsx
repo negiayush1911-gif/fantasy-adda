@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react"
 import { SplashScreen } from "@/components/splash-screen"
 import { LoginScreen } from "@/components/login-screen"
+import { CreateProfileScreen } from "@/components/create-profile-screen"
 import { HomeScreen } from "@/components/home-screen"
 import { SelectPlayersScreen, type Player } from "@/components/select-players-screen"
 import { MvpSelectionScreen } from "@/components/mvp-selection-screen"
@@ -17,10 +18,14 @@ import { WithdrawScreen } from "@/components/withdraw-screen"
 import { WithdrawalSuccessScreen } from "@/components/withdrawal-success-screen"
 import { LowBalanceModal } from "@/components/low-balance-modal"
 import { SupportScreen } from "@/components/support-screen"
+import { ProfileScreen } from "@/components/profile-screen"
+import { HowToPlayScreen } from "@/components/how-to-play-screen"
+import { MyContestsScreen } from "@/components/my-contests-screen"
 
 type Screen = 
   | "splash" 
   | "login" 
+  | "createProfile"
   | "home" 
   | "selectPlayers" 
   | "selectMvp" 
@@ -34,6 +39,9 @@ type Screen =
   | "withdraw"
   | "withdrawalSuccess"
   | "support"
+  | "profile"
+  | "howToPlay"
+  | "myContests"
 
 interface Contest {
   id: number
@@ -41,6 +49,20 @@ interface Contest {
   prizePool: number
   spotsLeft: number
   totalSpots: number
+}
+
+export interface JoinedContest {
+  id: string
+  contestId: number
+  contestName: string
+  entryFee: number
+  prizePool: number
+  status: "active" | "completed" | "upcoming"
+  result?: "won" | "lost"
+  winnings?: number
+  position?: number
+  joinedAt: string
+  matchTime?: string
 }
 
 // Format timestamp
@@ -117,6 +139,10 @@ export default function Home() {
   const [lastWithdrawalAmount, setLastWithdrawalAmount] = useState(0)
   const [lastWithdrawalUpi, setLastWithdrawalUpi] = useState("")
   
+  // User profile state
+  const [userProfile, setUserProfile] = useState<{ name: string; avatar: string } | null>(null)
+  const [isNewUser, setIsNewUser] = useState(true) // Simulates new vs existing user check
+  
   // Contest flow state
   const [selectedContest, setSelectedContest] = useState<Contest | null>(null)
   const [selectedPlayers, setSelectedPlayers] = useState<Player[]>([])
@@ -126,11 +152,34 @@ export default function Home() {
   // Low balance modal state
   const [showLowBalanceModal, setShowLowBalanceModal] = useState(false)
   const [pendingContest, setPendingContest] = useState<Contest | null>(null)
+  
+  // Joined contests state
+  const [joinedContests, setJoinedContests] = useState<JoinedContest[]>([])
 
   // Navigation handlers
   const handleSplashContinue = () => setCurrentScreen("login")
   const handleLoginBack = () => setCurrentScreen("splash")
-  const handleLoginContinue = () => setCurrentScreen("home")
+  
+  // After login, check if new user needs profile creation
+  const handleLoginContinue = () => {
+    if (isNewUser && !userProfile) {
+      setCurrentScreen("createProfile")
+    } else {
+      setCurrentScreen("home")
+    }
+  }
+  
+  // Handle profile creation completion
+  const handleProfileCreated = (name: string, avatar: string) => {
+    setUserProfile({ name, avatar })
+    setIsNewUser(false)
+    setCurrentScreen("home")
+  }
+  
+  // Handle profile update
+  const handleUpdateProfile = (name: string, avatar: string) => {
+    setUserProfile({ name, avatar })
+  }
 
   const handleJoinContest = (contest: Contest) => {
     if (walletBalance < contest.entryFee) {
@@ -169,6 +218,19 @@ export default function Home() {
     if (selectedContest) {
       // Deduct entry fee
       setWalletBalance((prev) => prev - selectedContest.entryFee)
+      
+      // Add to joined contests
+      const newJoinedContest: JoinedContest = {
+        id: Date.now().toString(),
+        contestId: selectedContest.id,
+        contestName: "BGMI - Match 1",
+        entryFee: selectedContest.entryFee,
+        prizePool: selectedContest.prizePool,
+        status: "active",
+        joinedAt: formatTimestamp(new Date()),
+        matchTime: "Starting in 2 hours"
+      }
+      setJoinedContests((prev) => [newJoinedContest, ...prev])
       
       // Add transaction
       const newTransaction: Transaction = {
@@ -277,6 +339,18 @@ export default function Home() {
   const handleOpenSupport = () => setCurrentScreen("support")
   const handleSupportBack = () => setCurrentScreen("home")
   
+  // Profile handlers
+  const handleOpenProfile = () => setCurrentScreen("profile")
+  const handleProfileBack = () => setCurrentScreen("home")
+  
+  // How to Play handlers
+  const handleOpenHowToPlay = () => setCurrentScreen("howToPlay")
+  const handleHowToPlayBack = () => setCurrentScreen("home")
+  
+  // My Contests handlers
+  const handleOpenMyContests = () => setCurrentScreen("myContests")
+  const handleMyContestsBack = () => setCurrentScreen("home")
+  
   // Low balance modal handlers
   const handleLowBalanceAddMoney = () => {
     setShowLowBalanceModal(false)
@@ -297,6 +371,10 @@ export default function Home() {
     return <LoginScreen onBack={handleLoginBack} onContinue={handleLoginContinue} />
   }
 
+  if (currentScreen === "createProfile") {
+    return <CreateProfileScreen onComplete={handleProfileCreated} />
+  }
+
   if (currentScreen === "home") {
     return (
       <>
@@ -305,6 +383,11 @@ export default function Home() {
           walletBalance={walletBalance}
           onOpenWallet={handleOpenWallet}
           onOpenSupport={handleOpenSupport}
+          onOpenProfile={handleOpenProfile}
+          onOpenHowToPlay={handleOpenHowToPlay}
+          onOpenMyContests={handleOpenMyContests}
+          userName={userProfile?.name || "Player"}
+          userAvatar={userProfile?.avatar || "default"}
         />
         {showLowBalanceModal && pendingContest && (
           <LowBalanceModal
@@ -380,6 +463,32 @@ export default function Home() {
 
   if (currentScreen === "support") {
     return <SupportScreen onBack={handleSupportBack} />
+  }
+
+  if (currentScreen === "profile" && userProfile) {
+    return (
+      <ProfileScreen 
+        userName={userProfile.name}
+        userAvatar={userProfile.avatar}
+        walletBalance={walletBalance}
+        onBack={handleProfileBack}
+        onUpdateProfile={handleUpdateProfile}
+        onOpenWallet={handleOpenWallet}
+      />
+    )
+  }
+
+  if (currentScreen === "howToPlay") {
+    return <HowToPlayScreen onBack={handleHowToPlayBack} />
+  }
+
+  if (currentScreen === "myContests") {
+    return (
+      <MyContestsScreen 
+        contests={joinedContests}
+        onBack={handleMyContestsBack}
+      />
+    )
   }
 
   if (currentScreen === "selectPlayers") {
